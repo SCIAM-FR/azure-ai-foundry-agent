@@ -1,57 +1,62 @@
-import azure.functions as func
+"""Main function app for Azure AI Foundry Agent."""
+
+import json
 import logging
+import os
+
+import azure.functions as func
 from azure.ai.projects import AIProjectClient
 from azure.identity import DefaultAzureCredential
-import os
-import json
 
 app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
 
+
 @app.route(route="agent_httptrigger")
 def agent_httptrigger(req: func.HttpRequest) -> func.HttpResponse:
-    logging.info('Python HTTP trigger function processed a request.')
+    """HTTP Trigger function to process messages with an AI agent."""
+    logging.info("Python HTTP trigger function processed a request.")
 
-    message = req.params.get('message')
-    agentid = req.params.get('agentid')
-    threadid = req.params.get('threadid')
-    
-    if not message or not agentid:
+    message = req.params.get("message")
+    agent_id = req.params.get("agentid")
+    threadid = req.params.get("threadid")
+
+    if not message or not agent_id:
         try:
             req_body = req.get_json()
         except ValueError:
             req_body = None
 
         if req_body:
-            message = req_body.get('message')
-            agentid = req_body.get('agentid')
-            threadid = req_body.get('threadid')
+            message = req_body.get("message")
+            agent_id = req_body.get("agentid")
+            threadid = req_body.get("threadid")
 
-    if not message or not agentid:
+    if not message or not agent_id:
         return func.HttpResponse(
             "Pass in a message and agentid in the query string or in the request body for a personalized response.",
-            status_code=400
+            status_code=400,
         )
 
     conn_str = os.environ.get("AIProjectConnString")
     if not conn_str:
-        logging.error("AIProjectConnString is not set in local.settings.json or environment variables.")
+        logging.error(
+            "AIProjectConnString is not set in local.settings.json or environment variables."
+        )
         return func.HttpResponse(
-            "Internal Server Error: Missing AIProjectConnString.",
-            status_code=500
+            "Internal Server Error: Missing AIProjectConnString.", status_code=500
         )
 
-    try:            
+    try:
         project_client = AIProjectClient(
             credential=DefaultAzureCredential(),
             endpoint=conn_str,
         )
 
-        agent = project_client.agents.get_agent(agentid)
+        agent = project_client.agents.get_agent(agent_id)
         if not agent:
-            logging.error(f"Agent with ID {agentid} not found.")
+            logging.error(f"Agent with ID {agent_id} not found.")
             return func.HttpResponse(
-                f"Agent with ID {agentid} not found.",
-                status_code=404
+                f"Agent with ID {agent_id} not found.", status_code=404
             )
 
         # Fix for the 'create_thread' method issue
@@ -68,18 +73,15 @@ def agent_httptrigger(req: func.HttpRequest) -> func.HttpResponse:
                 thread_id = thread_response.id
         else:
             thread_id = threadid
-            
+
         # Create a message in the thread
         message = project_client.agents.messages.create(
-            thread_id=thread_id,
-            role="user",
-            content=message
+            thread_id=thread_id, role="user", content=message
         )
 
         # Process the message with the agent
         project_client.agents.runs.create_and_process(
-            thread_id=thread_id,
-            agent_id=agent.id
+            thread_id=thread_id, agent_id=agent.id
         )
 
         # Get the messages from the thread
@@ -88,28 +90,26 @@ def agent_httptrigger(req: func.HttpRequest) -> func.HttpResponse:
         if assistant_messages:
             assistant_message = assistant_messages[-1]
             assistant_text = " ".join(
-                part["text"]["value"] for part in assistant_message["content"] if "text" in part
+                part["text"]["value"]
+                for part in assistant_message["content"]
+                if "text" in part
             )
         else:
             assistant_text = "No assistant message found."
 
         # Return the response with the thread ID for continuity
-        #response_data = {
+        # response_data = {
         #    "message": assistant_text,
         #    "threadId": thread_id
-        #}
-        
+        # }
+
         return func.HttpResponse(
-            json.dumps(assistant_text),
-            status_code=200,
-            mimetype="application/json"
+            json.dumps(assistant_text), status_code=200, mimetype="application/json"
         )
     except Exception as e:
         logging.error(f"An error occurred: {str(e)}")
         # Include more detailed error information for debugging
         import traceback
+
         logging.error(traceback.format_exc())
-        return func.HttpResponse(
-            "Internal Server Error: " + str(e),
-            status_code=500
-        )
+        return func.HttpResponse("Internal Server Error: " + str(e), status_code=500)
