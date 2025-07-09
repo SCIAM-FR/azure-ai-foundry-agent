@@ -18,7 +18,7 @@ def agent_httptrigger(req: func.HttpRequest) -> func.HttpResponse:
 
     message = req.params.get("message")
     agent_id = req.params.get("agentid")
-    threadid = req.params.get("threadid")
+    _thread_id = req.params.get("threadid")
 
     if not message or not agent_id:
         try:
@@ -29,7 +29,7 @@ def agent_httptrigger(req: func.HttpRequest) -> func.HttpResponse:
         if req_body:
             message = req_body.get("message")
             agent_id = req_body.get("agentid")
-            threadid = req_body.get("threadid")
+            _thread_id = req_body.get("threadid")
 
     if not message or not agent_id:
         return func.HttpResponse(
@@ -60,7 +60,7 @@ def agent_httptrigger(req: func.HttpRequest) -> func.HttpResponse:
             )
 
         # Fix for the 'create_thread' method issue
-        if not threadid:
+        if not _thread_id:
             # Create a new thread using the correct API
             try:
                 # Try the newer API if available
@@ -72,7 +72,7 @@ def agent_httptrigger(req: func.HttpRequest) -> func.HttpResponse:
                 thread_response = project_client.agents.threads.create()
                 thread_id = thread_response.id
         else:
-            thread_id = threadid
+            thread_id = _thread_id
 
         # Create a message in the thread
         message = project_client.agents.messages.create(
